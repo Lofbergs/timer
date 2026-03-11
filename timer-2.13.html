@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<title>Time Timer v2.13</title>
+<style>
+body { background:#555; font-family:Arial; color:white; text-align:center; }
+#clock { width:420px; margin:auto; }
+svg { width:100%; height:100%; }
+.number { fill:white; font-size:14px; text-anchor:middle; dominant-baseline:middle; stroke:black; stroke-width:0.5px; }
+.tick-outline { stroke:black; stroke-width:5; stroke-linecap:round; }
+.tick { stroke:white; stroke-width:3; stroke-linecap:round; }
+</style>
+</head>
+<body>
+
+<h2>Time Timer v2.13</h2>
+
+Total tid (min): <input id="totalTime" type="number" value="30"><br><br>
+
+<!-- Exempel för 3 zoner -->
+Zon 1 (min kvar): <input type="number" class="zoneTime" value="30">
+Färg: <input type="color" class="zoneColor" value="#2ecc71"><br>
+Zon 2 (min kvar): <input type="number" class="zoneTime" value="10">
+Färg: <input type="color" class="zoneColor" value="#f1c40f"><br>
+Zon 3 (min kvar): <input type="number" class="zoneTime" value="5">
+Färg: <input type="color" class="zoneColor" value="#e74c3c"><br>
+
+<button onclick="startTimer()">Start</button>
+
+<div id="clock">
+<svg viewBox="0 0 200 200">
+<circle cx="100" cy="100" r="80" fill="white"/>
+<path id="timerArc"></path>
+<g id="ticks"></g>
+
+<text x="100" y="8" class="number">12</text>
+<text x="194" y="100" class="number">15</text>
+<text x="100" y="192" class="number">18</text>
+<text x="6" y="100" class="number">21</text>
+</svg>
+</div>
+
+<script>
+let totalSeconds, remaining, startTime, animationFrameId;
+const transition = 10;
+
+// polarkoordinater
+function polar(cx,cy,r,a){ 
+    let rad=(a-90)*Math.PI/180; 
+    return {x:cx+r*Math.cos(rad), y:cy+r*Math.sin(rad)}; 
+}
+
+// minuter kvar → grader SVG
+function minutesToAngle(minutes){
+    return 360 - (minutes/60*360);
+}
+
+// SVG-båge
+function sectorPath(startAngle){
+    let endAngle = 0;
+    let start = polar(100,100,80,startAngle);
+    let end = polar(100,100,80,endAngle);
+
+    let sweep = (360 + endAngle - startAngle) % 360;
+    let large = sweep > 180 ? 1 : 0;
+
+    return `M100 100 L ${start.x} ${start.y} A 80 80 0 ${large} 1 ${end.x} ${end.y} Z`;
+}
+
+// färgblandning
+function mix(c1,c2,t){ 
+    let a=c1.match(/\w\w/g).map(x=>parseInt(x,16)), b=c2.match(/\w\w/g).map(x=>parseInt(x,16));
+    let r=Math.round(a[0]+(b[0]-a[0])*t),
+        g=Math.round(a[1]+(b[1]-a[1])*t),
+        b2=Math.round(a[2]+(b[2]-a[2])*t);
+    return `rgb(${r},${g},${b2})`;
+}
+
+// dynamisk färgzon baserat på remaining
+function getColor(){
+    let zones = [];
+    document.querySelectorAll('.zoneTime').forEach((el,i)=>{
+        zones.push({
+            time: parseFloat(el.value)*60,
+            color: document.querySelectorAll('.zoneColor')[i].value
+        });
+    });
+
+    for(let i=0;i<zones.length;i++){
+        if(remaining>zones[i].time) return zones[i].color;
+        if(i<zones.length-1 && remaining>zones[i+1].time){
+            let t = (zones[i].time - remaining)/transition;
+            return mix(zones[i].color,zones[i+1].color,t);
+        }
+    }
+    return zones[zones.length-1].color;
+}
+
+// rita båge
+function draw(){
+    let minutesLeft = remaining/60;
+    let startAngle = minutesToAngle(minutesLeft);
+    let arc=document.getElementById("timerArc");
+    arc.setAttribute("d", sectorPath(startAngle));
+    arc.setAttribute("fill", getColor());
+}
+
+// animation 60fps
+function animate(){
+    let now = Date.now();
+    remaining = Math.max(0, totalSeconds - (now - startTime)/1000);
+    draw();
+    if(remaining>0){
+        animationFrameId = requestAnimationFrame(animate);
+    }
+}
+
+// starta timer
+function startTimer(){
+    totalSeconds = parseInt(document.getElementById("totalTime").value)*60;
+    remaining = totalSeconds;
+    startTime = Date.now();
+
+    cancelAnimationFrame(animationFrameId);
+    animate();
+}
+
+// tickmarks
+function createTicks(){
+    let g=document.getElementById("ticks");
+    for(let i=0;i<12;i++){
+        let angle=i*30;
+        let outer=polar(100,100,80,angle);
+        let inner=polar(100,100,72,angle);
+
+        let outline=document.createElementNS("http://www.w3.org/2000/svg","line");
+        outline.setAttribute("x1",outer.x); outline.setAttribute("y1",outer.y);
+        outline.setAttribute("x2",inner.x); outline.setAttribute("y2",inner.y);
+        outline.setAttribute("class","tick-outline");
+
+        let line=document.createElementNS("http://www.w3.org/2000/svg","line");
+        line.setAttribute("x1",outer.x); line.setAttribute("y1",outer.y);
+        line.setAttribute("x2",inner.x); line.setAttribute("y2",inner.y);
+        line.setAttribute("class","tick");
+
+        g.appendChild(outline);
+        g.appendChild(line);
+    }
+}
+createTicks();
+</script>
+
+</body>
+</html>
