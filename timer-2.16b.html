@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<title>Time Timer v2.16</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  background:#555;
+  font-family:Arial;
+  color:white;
+  text-align:center;
+  margin:0;
+  padding:10px;
+}
+
+#clock {
+  width:90vw;          /* 👈 fyller nästan hela skärmen */
+  max-width:500px;     /* 👈 lagom stor på desktop */
+  margin:auto;
+}
+
+svg {
+  width:100%;
+  height:auto;
+}
+
+.number{
+  fill:white;
+  font-size: clamp(10px, 2.2vw, 14px);
+  text-anchor:middle;
+  dominant-baseline:middle;
+  stroke:black;
+  stroke-width:0.6px;
+}
+
+.tick-outline{ stroke:black; stroke-width:5; stroke-linecap:round; }
+.tick{ stroke:white; stroke-width:3; stroke-linecap:round; }
+
+.zone-row{ margin:4px 0; }
+
+@media (max-width: 600px){
+  .zone-row{ margin:8px 0; }
+}
+
+/* 👇 Gör inputs större på mobil */
+input, button {
+  font-size:16px;
+  padding:6px;
+  margin:4px;
+}
+
+/* 👇 Extra mobiljustering */
+@media (max-width: 600px){
+
+  h2 {
+    font-size:20px;
+  }
+
+}
+
+input[type="color"]{
+  width:50px;
+  height:30px;
+  padding:0;
+  border:none;
+  cursor:pointer;
+}
+
+</style>
+</head>
+<body>
+
+<h2>Time Timer v2.16</h2>
+
+Total tid (min):
+<input id="totalTime" type="number" value="30">
+<br><br>
+
+<div id="zonesContainer"></div>
+
+<button onclick="addZone()">Lägg till zon</button>
+<button onclick="startTimer()">Start</button>
+
+<div id="clock">
+<svg viewBox="0 0 200 200">
+
+<circle cx="100" cy="100" r="80" fill="white"/>
+
+<path id="timerArc"></path>
+
+<g id="ticks"></g>
+<g id="numbers"></g>
+
+</svg>
+</div>
+
+<script>
+
+let totalSeconds
+let remaining
+let startTime
+let animationFrameId
+
+const transition = 10
+
+const zonesContainer=document.getElementById("zonesContainer")
+
+// ✔ Default = gul
+function addZone(time=10,color="#f1c40f"){
+
+const div=document.createElement("div")
+div.className="zone-row"
+
+div.innerHTML=
+`Tid (min kvar):
+<input type="number" class="zoneTime" value="${time}">
+Färg:
+<input type="color" class="zoneColor" value="${color}">
+<button onclick="this.parentNode.remove()">Ta bort</button>`
+
+zonesContainer.appendChild(div)
+}
+
+// ✔ Endast gul + röd från start
+addZone(10,"#f1c40f")
+addZone(5,"#e74c3c")
+
+function polar(cx,cy,r,a){
+let rad=(a-90)*Math.PI/180
+return{
+x:cx+r*Math.cos(rad),
+y:cy+r*Math.sin(rad)
+}
+}
+
+function minutesToAngle(minutes){
+return 360-(minutes/60*360)
+}
+
+function sectorPath(startAngle){
+
+let endAngle=0
+
+let start=polar(100,100,80,startAngle)
+let end=polar(100,100,80,endAngle)
+
+let sweep=(360+endAngle-startAngle)%360
+let large=sweep>180?1:0
+
+return`M100 100
+L ${start.x} ${start.y}
+A 80 80 0 ${large} 1 ${end.x} ${end.y}
+Z`
+}
+
+function mix(c1,c2,t){
+
+let a=c1.match(/\w\w/g).map(x=>parseInt(x,16))
+let b=c2.match(/\w\w/g).map(x=>parseInt(x,16))
+
+let r=Math.round(a[0]+(b[0]-a[0])*t)
+let g=Math.round(a[1]+(b[1]-a[1])*t)
+let b2=Math.round(a[2]+(b[2]-a[2])*t)
+
+return`rgb(${r},${g},${b2})`
+}
+
+function getColor(){
+
+let zones=[]
+
+// läs zoner
+document.querySelectorAll('.zoneTime').forEach((el,i)=>{
+zones.push({
+time:parseFloat(el.value)*60,
+color:document.querySelectorAll('.zoneColor')[i].value
+})
+})
+
+// fallback
+if(zones.length===0) return "#2ecc71"
+
+// sortera
+zones.sort((a,b)=>b.time-a.time)
+
+// startfärg (grön)
+let startColor = "#2ecc71"
+
+for(let i=0;i<zones.length;i++){
+
+let current = zones[i]
+let prevTime = (i===0) ? totalSeconds : zones[i-1].time
+
+if(remaining <= prevTime && remaining > current.time){
+
+let fromColor = (i===0) ? startColor : zones[i-1].color
+let toColor = current.color
+
+// transition
+if(remaining <= current.time + transition){
+
+let t = 1 - (remaining - current.time)/transition
+return mix(fromColor, toColor, t)
+
+}
+
+return fromColor
+}
+
+}
+
+// sista zon
+return zones[zones.length-1].color
+}
+
+function draw(){
+
+let minutesLeft=remaining/60
+let startAngle=minutesToAngle(minutesLeft)
+
+let arc=document.getElementById("timerArc")
+
+arc.setAttribute("d",sectorPath(startAngle))
+arc.setAttribute("fill",getColor())
+}
+
+function animate(){
+
+let now=Date.now()
+remaining=Math.max(0,totalSeconds-(now-startTime)/1000)
+
+draw()
+
+if(remaining>0){
+animationFrameId=requestAnimationFrame(animate)
+}
+}
+
+function startTimer(){
+
+totalSeconds=parseFloat(document.getElementById("totalTime").value)*60
+remaining=totalSeconds
+startTime=Date.now()
+
+cancelAnimationFrame(animationFrameId)
+
+animate()
+}
+
+function createTicks(){
+
+let g=document.getElementById("ticks")
+
+for(let i=0;i<12;i++){
+
+let angle=i*30
+
+let outer=polar(100,100,80,angle)
+let inner=polar(100,100,72,angle)
+
+let outline=document.createElementNS("http://www.w3.org/2000/svg","line")
+outline.setAttribute("x1",outer.x)
+outline.setAttribute("y1",outer.y)
+outline.setAttribute("x2",inner.x)
+outline.setAttribute("y2",inner.y)
+outline.setAttribute("class","tick-outline")
+
+let line=document.createElementNS("http://www.w3.org/2000/svg","line")
+line.setAttribute("x1",outer.x)
+line.setAttribute("y1",outer.y)
+line.setAttribute("x2",inner.x)
+line.setAttribute("y2",inner.y)
+line.setAttribute("class","tick")
+
+g.appendChild(outline)
+g.appendChild(line)
+}
+}
+
+function createNumbers(){
+
+let g=document.getElementById("numbers")
+
+for(let i=0;i<12;i++){
+
+let value=(60-(i*5))%60
+let angle=i*30
+
+let pos=polar(100,100,86,angle)
+
+let t=document.createElementNS("http://www.w3.org/2000/svg","text")
+
+t.setAttribute("x",pos.x)
+t.setAttribute("y",pos.y)
+t.setAttribute("class","number")
+
+t.textContent=value
+
+g.appendChild(t)
+}
+}
+
+createTicks()
+createNumbers()
+
+</script>
+
+</body>
+</html>
